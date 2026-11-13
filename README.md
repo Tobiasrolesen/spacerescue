@@ -43,7 +43,7 @@ Kan MongoDB ikke nås, skriver serveren en tydelig fejl og stopper i stedet for 
 npm run seed
 ```
 
-Opretter rumskibene **Orion** (Rescue), **Voyager** (Transport) og **Discovery** (Research). Scriptet kan køres flere gange: skibe, der allerede findes, springes over og bliver ikke ændret.
+Opretter rumskibene **Orion** (Rescue), **Voyager** (Transport) og **Discovery** (Research) samt de to nødsituationer fra casen på Kepler-186f: **Oxygen Crisis** (forskningsstationen mangler ilt) og **Engine Failure** (fragtskibet har mistet sin motor). Scriptet kan køres flere gange: data, der allerede findes, springes over og bliver ikke ændret.
 
 ## API
 
@@ -52,8 +52,11 @@ Opretter rumskibene **Orion** (Rescue), **Voyager** (Transport) og **Discovery**
 | GET | `/api/ships` | Hent alle rumskibe | `200` |
 | GET | `/api/ships/:id` | Hent ét rumskib | `200`, `400 VALIDATION_ERROR`, `404 SHIP_NOT_FOUND` |
 | POST | `/api/ships` | Opret rumskib | `201`, `400 VALIDATION_ERROR`, `409 SHIP_NAME_TAKEN` |
+| GET | `/api/missions` | Hent alle missioner (nyeste først) | `200` |
+| GET | `/api/missions/:id` | Hent én mission | `200`, `400 VALIDATION_ERROR`, `404 MISSION_NOT_FOUND` |
+| POST | `/api/missions` | Opret mission | `201`, `400 VALIDATION_ERROR` |
 
-Eksempel på oprettelse:
+### Rumskibe
 
 ```json
 POST /api/ships
@@ -61,6 +64,25 @@ POST /api/ships
 ```
 
 Et nyt rumskib får automatisk `"status": "available"`. Skibsnavne er unikke – det håndhæves af et unikt indeks i MongoDB, så reglen også holder, når to requests ankommer samtidigt.
+
+### Missioner
+
+```json
+POST /api/missions
+{
+  "title": "Oxygen Crisis",
+  "destination": "Kepler-186f",
+  "description": "Research station is running out of oxygen"
+}
+```
+
+En ny mission får automatisk `"status": "pending"`. `title` og `destination` er påkrævet, `description` er valgfri.
+
+| Status | Betydning |
+|---|---|
+| `pending` | Oprettet, venter på et rumskib |
+| `active` | Et rumskib er tildelt |
+| `completed` | Missionen er afsluttet |
 
 ### Validering
 
