@@ -1,7 +1,14 @@
 const app = require("./app");
 const { connectDatabase, disconnectDatabase } = require("./config/database");
+const { logger, flushLogs } = require("./utils/logger");
 
 const PORT = process.env.PORT || 3000;
+
+//Skriver de sidste logbeskeder færdigt, før processen stopper
+async function exit(code) {
+    await flushLogs();
+    process.exit(code);
+}
 
 //Vi forbinder til MongoDB, før serveren starter.
 //Uden database giver det ingen mening at tage imod requests.
@@ -9,20 +16,20 @@ async function start() {
     try {
         await connectDatabase(process.env.MONGODB_URI);
     } catch (err) {
-        console.error(`${err.message} - serveren starter ikke.`);
-        process.exit(1);
+        logger.error(`${err.message} - serveren starter ikke.`);
+        await exit(1);
     }
 
     const server = app.listen(PORT, () => {
-        console.log(`SpaceRescue kører på http://localhost:${PORT}`);
+        logger.info(`SpaceRescue kører på http://localhost:${PORT}`);
     });
 
     //Lukker serveren og databaseforbindelsen pænt ved Ctrl+C eller stop
     async function shutdown(signal) {
-        console.log(`${signal} modtaget - lukker SpaceRescue ned...`);
+        logger.info(`${signal} modtaget - lukker SpaceRescue ned...`);
         server.close(async () => {
             await disconnectDatabase();
-            process.exit(0);
+            await exit(0);
         });
     }
 
