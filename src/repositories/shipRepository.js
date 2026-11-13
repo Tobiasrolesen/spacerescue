@@ -30,4 +30,12 @@ async function createIfNotExists(data) {
     return result.upsertedCount === 1;
 }
 
-module.exports = { findAll, findById, create, createIfNotExists };
+//Betinget, atomisk statusændring: opdaterer KUN, hvis skibet stadig har status "from".
+//Søgning og opdatering sker i én operation i MongoDB, så ingen anden request kan nå
+//at ændre status imellem. Returnerer true, hvis skibet blev opdateret.
+async function updateStatus(id, from, to) {
+    const result = await Ship.updateOne({ _id: id, status: from }, { $set: { status: to } });
+    return result.modifiedCount === 1;
+}
+
+module.exports = { findAll, findById, create, createIfNotExists, updateStatus };

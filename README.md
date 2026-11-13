@@ -55,6 +55,8 @@ Opretter rumskibene **Orion** (Rescue), **Voyager** (Transport) og **Discovery**
 | GET | `/api/missions` | Hent alle missioner (nyeste først) | `200` |
 | GET | `/api/missions/:id` | Hent én mission | `200`, `400 VALIDATION_ERROR`, `404 MISSION_NOT_FOUND` |
 | POST | `/api/missions` | Opret mission | `201`, `400 VALIDATION_ERROR` |
+| POST | `/api/missions/:id/assign` | Tildel rumskib til mission | `201`, `400 VALIDATION_ERROR`, `404 MISSION_NOT_FOUND` / `SHIP_NOT_FOUND`, `409 SHIP_UNAVAILABLE` / `MISSION_ALREADY_ASSIGNED` / `MISSION_COMPLETED` |
+| GET | `/api/missions/:id/assignment` | Hent missionens aktive tildeling | `200`, `400 VALIDATION_ERROR`, `404 MISSION_NOT_FOUND` / `ASSIGNMENT_NOT_FOUND` |
 
 ### Rumskibe
 
@@ -83,6 +85,47 @@ En ny mission får automatisk `"status": "pending"`. `title` og `destination` er
 | `pending` | Oprettet, venter på et rumskib |
 | `active` | Et rumskib er tildelt |
 | `completed` | Missionen er afsluttet |
+
+### Tildeling af rumskibe
+
+```json
+POST /api/missions/:id/assign
+{ "shipId": "6af6e19c1e89a46ce0e01b84" }
+```
+
+```json
+201 Created
+{ "_id": "...", "missionId": "...", "shipId": "...", "status": "active", "createdAt": "..." }
+```
+
+Reglerne:
+
+- Et rumskib må kun være tildelt **én aktiv mission** ad gangen → ellers `409 SHIP_UNAVAILABLE`
+- En mission må kun have **ét aktivt rumskib** → ellers `409 MISSION_ALREADY_ASSIGNED`
+- En afsluttet mission kan ikke få et rumskib → `409 MISSION_COMPLETED`
+- Ukendte missioner og rumskibe → `404`
+
+#### Databasegarantien mod dobbelt tildeling
+
+Det er **ikke** nok at tjekke "er Orion ledig?" i JavaScript og derefter gemme. To operatører kan begge nå at læse "ledig", før nogen af dem har gemt – `async/await` ændrer ikke på det, fordi andre requests kan køre, mens vi venter på databasen.
+
+Derfor gemmes tildelinger i en separat `assignments`-collection med to **partielle unikke indeks** (`src/models/assignmentModel.js`):
+
+| Indeks | Felt | Gælder for | Betyder |
+|---|---|---|---|
+| `unique_active_ship` | `shipId` | `status: "active"` | Et skib kan kun have én aktiv tildeling |
+| `unique_active_mission` | `missionId` | `status: "active"` | En mission kan kun have én aktiv tildeling |
+
+Indekset er *partielt*, så et skib godt kan have mange **afsluttede** tildelinger, men kun én **aktiv**. Ankommer to requests samtidigt, kan MongoDB kun indsætte den ene – den anden afvises med dubletfejl `11000`, som `missionService` oversætter til `409`. Indeksene oprettes ved opstart, før serveren tager imod requests.
+
+Flowet i `missionService.assignShip()`:
+
+1. Find mission og skib (`404` hvis de ikke findes; `409` hvis missionen er afsluttet).
+2. **Indsæt aktiv tildeling** – her afgør databasen, om skibet/missionen er optaget.
+3. Opdatér skibet til `busy` og missionen til `active` med **betingede, atomiske** opdateringer ("kun hvis stadig `available`/`pending`").
+4. Fejler trin 3, slettes tildelingen og statusændringerne rulles tilbage, så der ikke opstår en halv tilstand. (Uden replica set har en lokal MongoDB ikke transaktioner, derfor denne kompensation.)
+
+`status` på skib og mission er en visning til oversigterne; den autoritative sandhed om, hvem der er tildelt hvad, ligger i `assignments`.
 
 ### Validering
 

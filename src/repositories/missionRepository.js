@@ -29,4 +29,11 @@ async function createIfNotExists(data) {
     return result.upsertedCount === 1;
 }
 
-module.exports = { findAll, findById, create, createIfNotExists };
+//Betinget, atomisk statusændring: opdaterer KUN, hvis missionen stadig har status "from".
+//Returnerer true, hvis missionen blev opdateret.
+async function updateStatus(id, from, to) {
+    const result = await Mission.updateOne({ _id: id, status: from }, { $set: { status: to } });
+    return result.modifiedCount === 1;
+}
+
+module.exports = { findAll, findById, create, createIfNotExists, updateStatus };
