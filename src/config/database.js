@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { logger } = require("../utils/logger");
 
 //Hvor længe vi venter på MongoDB, før vi giver op (ms)
 const SERVER_SELECTION_TIMEOUT_MS = 5000;
@@ -19,13 +20,13 @@ async function connectDatabase(uri) {
     }
 
     const { host, port, name } = mongoose.connection;
-    console.log(`Forbundet til MongoDB (${host}:${port}/${name})`);
+    logger.info(`Forbundet til MongoDB (${host}:${port}/${name})`);
 }
 
 //Lukker forbindelsen pænt, fx når serveren stoppes
 async function disconnectDatabase() {
     await mongoose.disconnect();
-    console.log("Forbindelsen til MongoDB er lukket");
+    logger.info("Forbindelsen til MongoDB er lukket");
 }
 
 module.exports = { connectDatabase, disconnectDatabase };

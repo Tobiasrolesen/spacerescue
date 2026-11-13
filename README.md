@@ -49,6 +49,16 @@ Konfiguration ligger i `.env` (som aldrig committes). Se `.env.example`:
 
 `.env` indlæses med Node's indbyggede `--env-file-if-exists`, så der er ingen afhængighed af `dotenv`.
 
+## Logging
+
+SpaceRescue logger med **winston** (fælles logger i `src/utils/logger.js`) og **morgan** (request-middleware i `src/middleware/requestLogger.js`).
+
+- **Konsol:** læsevenlige linjer, fx `[2026-11-13 14:02:11] warn: GET /findes-ikke 404 0.9ms`
+- **Fil:** `logs/spacerescue.log` – én JSON-linje pr. hændelse (tidspunkt i UTC). Mappen oprettes automatisk og committes ikke.
+- **Niveauer:** 2xx/3xx → `info`, 4xx → `warn`, 5xx → `error`. Opstart, databaseforbindelse og nedlukning logges også.
+- **Kun metadata:** metode, URL, statuskode og svartid. Bodies, headers og forbindelsesstrengen til MongoDB logges aldrig.
+- Filstien er fast i koden og kan ikke påvirkes af en request.
+
 ## Projektstruktur
 
 ```
@@ -62,8 +72,9 @@ spacerescue/
 │   ├── services/         # Forretningsregler
 │   ├── repositories/     # Henter og gemmer data i MongoDB
 │   ├── models/           # Mongoose-skemaer
-│   ├── middleware/       # Logger, validering og fejlhåndtering
-│   └── clients/          # Kommunikation med andre HTTP-systemer
+│   ├── middleware/       # Request-logger, validering og fejlhåndtering
+│   ├── clients/          # Kommunikation med andre HTTP-systemer
+│   └── utils/            # Fælles værktøjer, fx winston-loggeren
 ├── information-system/   # Separat Express-program, der modtager notifikationer
 ├── scripts/              # Fx seed af startdata
 ├── tests/                # Automatiserede tests (node:test)
