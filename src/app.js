@@ -1,6 +1,8 @@
 const express = require("express");
 const path = require("path");
 const requestLogger = require("./middleware/requestLogger");
+const errorHandler = require("./middleware/errorHandler");
+const shipRoutes = require("./routes/shipRoutes");
 
 const app = express();
 
@@ -10,7 +12,11 @@ app.use(requestLogger);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "..", "public")));
 
-//Routes monteres her i de kommende Issues (fx /api/ships og /api/missions)
+//Routes
+app.use("/api/ships", shipRoutes);
+
+//Fejlhåndtering registreres til sidst, så den fanger fejl fra alle routes
+app.use(errorHandler);
 
 //app.js starter ikke selv serveren - det gør server.js.
 //Derfor kan appen bruges i tests uden at lytte på en port.
