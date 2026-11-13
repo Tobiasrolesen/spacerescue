@@ -1,0 +1,19 @@
+{
+  "name": "spacerescue",
+  "version": "1.0.0",
+  "description": "SpaceRescue - galaksens redningscentral. REST API med Node.js, Express og MongoDB",
+  "main": "src/server.js",
+  "private": true,
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --watch --env-file-if-exists=.env src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "mongoose": "^9.12.1"
+  }
+}
