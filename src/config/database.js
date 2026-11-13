@@ -21,6 +21,18 @@ async function connectDatabase(uri) {
 
     const { host, port, name } = mongoose.connection;
     logger.info(`Forbundet til MongoDB (${host}:${port}/${name})`);
+
+    await ensureIndexes();
+}
+
+//Sikrer, at alle indeks fra modellerne findes i databasen, FØR serveren tager imod requests.
+//Mongoose bygger ellers indeks i baggrunden, og så ville fx de unikke indeks, der
+//forhindrer dobbelt tildeling af rumskibe, ikke gælde de første øjeblikke efter opstart.
+//Kan et indeks ikke oprettes (fx fordi eksisterende data bryder det), fejler opstarten tydeligt.
+async function ensureIndexes() {
+    const models = Object.values(mongoose.models);
+    await Promise.all(models.map((model) => model.createIndexes()));
+    logger.info(`Databaseindeks er klar (${models.map((model) => model.modelName).join(", ")})`);
 }
 
 //Lukker forbindelsen pænt, fx når serveren stoppes

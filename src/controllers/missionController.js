@@ -18,4 +18,14 @@ async function create(req, res) {
     res.status(201).json(mission);
 }
 
-module.exports = { getAll, getById, create };
+async function assign(req, res) {
+    const assignment = await missionService.assignShip(req.params.id, req.body.shipId);
+    res.status(201).json(assignment);
+}
+
+async function getAssignment(req, res) {
+    const assignment = await missionService.getAssignment(req.params.id);
+    res.status(200).json(assignment);
+}
+
+module.exports = { getAll, getById, create, assign, getAssignment };
