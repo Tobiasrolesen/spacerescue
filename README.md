@@ -37,6 +37,41 @@ SpaceRescue kører på http://localhost:3000
 
 Kan MongoDB ikke nås, skriver serveren en tydelig fejl og stopper i stedet for at starte uden database.
 
+### Startdata
+
+```bash
+npm run seed
+```
+
+Opretter rumskibene **Orion** (Rescue), **Voyager** (Transport) og **Discovery** (Research). Scriptet kan køres flere gange: skibe, der allerede findes, springes over og bliver ikke ændret.
+
+## API
+
+| HTTP | Endpoint | Funktion | Svar |
+|---|---|---|---|
+| GET | `/api/ships` | Hent alle rumskibe | `200` |
+| GET | `/api/ships/:id` | Hent ét rumskib | `200`, `404 SHIP_NOT_FOUND` |
+| POST | `/api/ships` | Opret rumskib | `201`, `409 SHIP_NAME_TAKEN` |
+
+Eksempel på oprettelse:
+
+```json
+POST /api/ships
+{ "name": "Orion", "type": "Rescue" }
+```
+
+Et nyt rumskib får automatisk `"status": "available"`. Skibsnavne er unikke – det håndhæves af et unikt indeks i MongoDB, så reglen også holder, når to requests ankommer samtidigt.
+
+### Fejlformat
+
+Alle fejl returneres som JSON med en maskinlæsbar kode og en forståelig besked:
+
+```json
+{ "error": "SHIP_NOT_FOUND", "message": "Rumskib med id 000000000000000000000000 findes ikke" }
+```
+
+Services kaster fejlklasser fra `src/errors/AppError.js` (`NotFoundError`, `ConflictError`), og `src/middleware/errorHandler.js` oversætter dem til HTTP-svar. Uventede fejl giver `500` uden tekniske detaljer; detaljerne logges.
+
 ## Konfiguration
 
 Konfiguration ligger i `.env` (som aldrig committes). Se `.env.example`:
@@ -74,6 +109,7 @@ spacerescue/
 │   ├── models/           # Mongoose-skemaer
 │   ├── middleware/       # Request-logger, validering og fejlhåndtering
 │   ├── clients/          # Kommunikation med andre HTTP-systemer
+│   ├── errors/           # Fejlklasser (NotFoundError, ConflictError)
 │   └── utils/            # Fælles værktøjer, fx winston-loggeren
 ├── information-system/   # Separat Express-program, der modtager notifikationer
 ├── scripts/              # Fx seed af startdata
