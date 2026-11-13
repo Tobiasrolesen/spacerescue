@@ -50,8 +50,8 @@ Opretter rumskibene **Orion** (Rescue), **Voyager** (Transport) og **Discovery**
 | HTTP | Endpoint | Funktion | Svar |
 |---|---|---|---|
 | GET | `/api/ships` | Hent alle rumskibe | `200` |
-| GET | `/api/ships/:id` | Hent ét rumskib | `200`, `404 SHIP_NOT_FOUND` |
-| POST | `/api/ships` | Opret rumskib | `201`, `409 SHIP_NAME_TAKEN` |
+| GET | `/api/ships/:id` | Hent ét rumskib | `200`, `400 VALIDATION_ERROR`, `404 SHIP_NOT_FOUND` |
+| POST | `/api/ships` | Opret rumskib | `201`, `400 VALIDATION_ERROR`, `409 SHIP_NAME_TAKEN` |
 
 Eksempel på oprettelse:
 
@@ -62,6 +62,28 @@ POST /api/ships
 
 Et nyt rumskib får automatisk `"status": "available"`. Skibsnavne er unikke – det håndhæves af et unikt indeks i MongoDB, så reglen også holder, når to requests ankommer samtidigt.
 
+### Validering
+
+Input valideres med **Joi** i `src/middleware/validate.js`, *før* requesten når controlleren. Skemaerne ligger i `src/validators/`.
+
+- Alle fejl findes på én gang og returneres som `400 VALIDATION_ERROR` med en `details`-liste pr. felt.
+- Ukendte felter afvises, så klienten opdager stavefejl og forsøg på at sende felter, der ikke må sættes.
+- `status` må ved oprettelse kun have startværdien (`available` for skibe, `pending` for missioner). Status ændres kun gennem tildeling og afslutning.
+- Ugyldige id'er (fx `/api/ships/abc`) afvises, før de når MongoDB.
+- Strenge trimmes, så `"  Orion  "` gemmes som `"Orion"`.
+
+```json
+400 Bad Request
+{
+  "error": "VALIDATION_ERROR",
+  "message": "Ugyldigt input",
+  "details": [
+    { "field": "name", "message": "\"name\" er påkrævet" },
+    { "field": "hacker", "message": "\"hacker\" er ikke et tilladt felt" }
+  ]
+}
+```
+
 ### Fejlformat
 
 Alle fejl returneres som JSON med en maskinlæsbar kode og en forståelig besked:
@@ -70,7 +92,7 @@ Alle fejl returneres som JSON med en maskinlæsbar kode og en forståelig besked
 { "error": "SHIP_NOT_FOUND", "message": "Rumskib med id 000000000000000000000000 findes ikke" }
 ```
 
-Services kaster fejlklasser fra `src/errors/AppError.js` (`NotFoundError`, `ConflictError`), og `src/middleware/errorHandler.js` oversætter dem til HTTP-svar. Uventede fejl giver `500` uden tekniske detaljer; detaljerne logges.
+Services og middleware kaster fejlklasser fra `src/errors/AppError.js` (`ValidationError`, `NotFoundError`, `ConflictError`), og `src/middleware/errorHandler.js` oversætter dem til HTTP-svar. Uventede fejl giver `500` uden tekniske detaljer; detaljerne logges.
 
 ## Konfiguration
 
@@ -109,7 +131,8 @@ spacerescue/
 │   ├── models/           # Mongoose-skemaer
 │   ├── middleware/       # Request-logger, validering og fejlhåndtering
 │   ├── clients/          # Kommunikation med andre HTTP-systemer
-│   ├── errors/           # Fejlklasser (NotFoundError, ConflictError)
+│   ├── validators/       # Joi-skemaer til validering af input
+│   ├── errors/           # Fejlklasser (ValidationError, NotFoundError, ConflictError)
 │   └── utils/            # Fælles værktøjer, fx winston-loggeren
 ├── information-system/   # Separat Express-program, der modtager notifikationer
 ├── scripts/              # Fx seed af startdata

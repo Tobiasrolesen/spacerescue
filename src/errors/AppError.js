@@ -10,6 +10,14 @@ class AppError extends Error {
     }
 }
 
+//Ugyldigt input fra klienten (400). details indeholder én linje pr. fejl.
+class ValidationError extends AppError {
+    constructor(details) {
+        super(400, "VALIDATION_ERROR", "Ugyldigt input");
+        this.details = details;
+    }
+}
+
 //Ressourcen findes ikke (404)
 class NotFoundError extends AppError {
     constructor(code, message) {
@@ -24,4 +32,4 @@ class ConflictError extends AppError {
     }
 }
 
-module.exports = { AppError, NotFoundError, ConflictError };
+module.exports = { AppError, ValidationError, NotFoundError, ConflictError };

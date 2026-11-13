@@ -6,7 +6,11 @@ const { logger } = require("../utils/logger");
 function errorHandler(err, req, res, next) {
     //Vores egne, forventede fejl (fx NotFoundError)
     if (err instanceof AppError) {
-        return res.status(err.statusCode).json({ error: err.code, message: err.message });
+        const body = { error: err.code, message: err.message };
+        if (err.details) {
+            body.details = err.details;   //Fx valideringsfejl pr. felt
+        }
+        return res.status(err.statusCode).json(body);
     }
 
     //Klientfejl fra Express selv, fx ugyldig JSON i body (400)
