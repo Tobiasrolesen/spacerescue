@@ -3,6 +3,7 @@ const path = require("path");
 const requestLogger = require("./middleware/requestLogger");
 const errorHandler = require("./middleware/errorHandler");
 const shipRoutes = require("./routes/shipRoutes");
+const missionRoutes = require("./routes/missionRoutes");
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 
 //Routes
 app.use("/api/ships", shipRoutes);
+app.use("/api/missions", missionRoutes);
 
 //Fejlhåndtering registreres til sidst, så den fanger fejl fra alle routes
 app.use(errorHandler);
