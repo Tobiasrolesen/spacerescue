@@ -23,6 +23,9 @@ const fileTransport = new winston.transports.File({ filename: LOG_FILE, format: 
 
 const logger = winston.createLogger({
     level: "info",
+    //Under automatiserede tests slås loggen fra (sættes af tests/helpers/testServer.js),
+    //så testoutputtet kun viser testresultater, og logfilen ikke fyldes med testdata
+    silent: process.env.LOG_SILENT === "true",
     transports: [
         new winston.transports.Console({ format: consoleFormat }),
         fileTransport

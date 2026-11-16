@@ -127,6 +127,51 @@ Flowet i `missionService.assignShip()`:
 
 `status` på skib og mission er en visning til oversigterne; den autoritative sandhed om, hvem der er tildelt hvad, ligger i `assignments`.
 
+## Samtidighed
+
+**Scenariet:** Orion er det eneste ledige skib nær Kepler-186f. To operatører tildeler det til hver sin mission næsten samtidigt. Begge ser, at Orion er ledig.
+
+**Hvorfor løser `async/await` det ikke?** `await` betyder kun, at *denne* request venter på databasen – imens kører Node.js andre requests videre. Request A og B kan derfor begge nå at læse `"available"`, før nogen af dem har gemt. Et tjek efterfulgt af en lagring er to separate operationer, og der kan ske hvad som helst imellem dem.
+
+**Hvad betyder atomisk?** En atomisk operation sker helt eller slet ikke, og ingen anden operation kan se eller ændre data midt i den. I MongoDB er en operation på ét dokument atomisk – fx en indsættelse, der kontrolleres mod et unikt indeks, eller `updateOne({ _id, status: "available" }, { $set: { status: "busy" } })`, hvor søgning og ændring sker i ét skridt.
+
+**Hvilken databasegaranti beskytter løsningen?** To lag:
+
+1. **Partielle unikke indeks** på `assignments` (`unique_active_ship`, `unique_active_mission`) – MongoDB tillader kun én aktiv tildeling pr. skib og pr. mission. Dette er den primære garanti.
+2. **Betingede, atomiske statusopdateringer** (`available → busy`, `pending → active`) – opdaterer kun, hvis status stadig er den forventede. Fejler de, rulles tildelingen tilbage.
+
+Et kontrolforsøg, hvor de unikke indeks midlertidigt blev fjernet, viste, at de betingede opdateringer alene også forhindrer dobbelt tildeling *via API'et*. Men uden indeksene kunne der midlertidigt ligge to aktive tildelinger i databasen, før tilbagerulningen ryddede op, og en indsættelse uden om service-laget blev slet ikke stoppet. Indeksene er derfor garantien; de betingede opdateringer er et ekstra sikkerhedsnet, der holder skibets og missionens status i trit.
+
+**Hvad sker der, når to operatører tildeler Orion?** Begge requests forsøger at indsætte en aktiv tildeling. MongoDB accepterer den første og afviser den anden med dubletfejl `11000`. Vinderen får `201 Created`; taberen får `409 SHIP_UNAVAILABLE`, og taberens mission forbliver `pending`.
+
+**Begrænsning:** En lokal standalone MongoDB har ikke transaktioner (det kræver et replica set). Derfor bruges tilbagerulning, hvis statusopdateringerne fejler efter indsættelsen. Med et replica set kunne tildeling og statusopdateringer samles i én transaktion.
+
+## Tests
+
+### Automatiserede tests
+
+```bash
+npm test
+```
+
+Kører `node:test` mod en **separat testdatabase** (`MONGODB_URI_TEST`, standard `spacerescue_test`). Testene tømmer databasen før hver test og nægter at køre, hvis databasenavnet ikke ender på `_test`, så rigtige data aldrig røres.
+
+`tests/concurrency.test.js` sender requests **samtidigt** med `Promise.all` og kontrollerer bagefter både HTTP-svar *og* databasens indhold:
+
+| Test | Forventet |
+|---|---|
+| To operatører tildeler samme skib til hver sin mission samtidigt | 1×`201`, 1×`409 SHIP_UNAVAILABLE`; præcis 1 aktiv tildeling; taberens mission `pending` |
+| 20 samtidige tildelinger af samme skib | 1×`201`, 19×`409`; 1 aktiv tildeling; 19 missioner `pending` |
+| To forskellige skibe til samme mission samtidigt | 1×`201`, 1×`409 MISSION_ALREADY_ASSIGNED`; det tabende skib stadig `available` |
+| Gentaget 10 gange fra ny starttilstand | Hver gang præcis én vinder |
+| To aktive tildelinger indsat direkte i MongoDB (uden om service-laget) | Den ene afvises med `11000` af `unique_active_ship` |
+
+`Promise.all` garanterer ikke, at databasen modtager requests på præcis samme tidspunkt – derfor gentages testen, sendes 20 på én gang, og den sidste test viser, at garantien ligger i databasen og ikke afhænger af timing.
+
+### Postman
+
+Collectionen **"Space Rescue Collection"** har mapperne *Ships*, *Missions*, *Assignments* og *Concurrency*. Mappen *Concurrency* sender to tildelinger af samme skib parallelt med `pm.sendRequest` og kontrollerer derefter den gemte tilstand.
+
 ### Validering
 
 Input valideres med **Joi** i `src/middleware/validate.js`, *før* requesten når controlleren. Skemaerne ligger i `src/validators/`.
@@ -167,6 +212,7 @@ Konfiguration ligger i `.env` (som aldrig committes). Se `.env.example`:
 |---|---|---|
 | `PORT` | `3000` | Porten API'et lytter på |
 | `MONGODB_URI` | `mongodb://localhost:27017/spacerescue` | Forbindelse til MongoDB |
+| `MONGODB_URI_TEST` | `mongodb://localhost:27017/spacerescue_test` | Separat database til `npm test` (navnet skal ende på `_test`) |
 | `INFORMATION_SYSTEM_URL` | `http://localhost:4000` | Det eksterne informationssystem |
 
 `.env` indlæses med Node's indbyggede `--env-file-if-exists`, så der er ingen afhængighed af `dotenv`.
