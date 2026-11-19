@@ -4,6 +4,11 @@
 //Slår loggen fra under tests. Skal sættes, FØR loggeren indlæses (via app/database nedenfor).
 process.env.LOG_SILENT = "true";
 
+//Som standard peger tests på en lukket port, så de aldrig sender beskeder til et rigtigt
+//informationssystem. tests/notification.test.js overskriver adressen med et falsk system.
+process.env.INFORMATION_SYSTEM_URL = "http://127.0.0.1:1";
+process.env.NOTIFICATION_TIMEOUT_MS = "500";
+
 const { once } = require("node:events");
 const mongoose = require("mongoose");
 const app = require("../../src/app");

@@ -2,6 +2,7 @@ const missionRepository = require("../repositories/missionRepository");
 const shipRepository = require("../repositories/shipRepository");
 const assignmentRepository = require("../repositories/assignmentRepository");
 const shipService = require("./shipService");
+const notificationClient = require("../clients/notificationClient");
 const { NotFoundError, ConflictError } = require("../errors/AppError");
 const { logger } = require("../utils/logger");
 
@@ -73,7 +74,27 @@ async function assignShip(missionId, shipId) {
         throw new ConflictError("MISSION_NOT_ASSIGNABLE", "Missionen kan ikke længere få tildelt et rumskib");
     }
 
-    return assignment;
+    //4. Giv informationssystemet besked. Tildelingen er allerede gemt og BEHOLDES,
+    //   også hvis informationssystemet er nede - en fejl i et andet system må ikke
+    //   få en gyldig lokal tildeling til at bortfalde.
+    const notification = await notifyInformationSystem(assignment);
+
+    return { ...assignment.toJSON(), notification };
+}
+
+//Returnerer "sent" eller "failed". Kaster aldrig - fejlen logges i stedet.
+async function notifyInformationSystem(assignment) {
+    try {
+        await notificationClient.notifyAssignment(assignment.missionId, assignment.shipId);
+        return "sent";
+    } catch (err) {
+        logger.warn(`Notifikation om tildeling ${assignment._id} fejlede: ${err.message}`, {
+            assignmentId: String(assignment._id),
+            missionId: String(assignment.missionId),
+            shipId: String(assignment.shipId)
+        });
+        return "failed";
+    }
 }
 
 //Henter missionens aktive tildeling
