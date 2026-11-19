@@ -95,7 +95,7 @@ POST /api/missions/:id/assign
 
 ```json
 201 Created
-{ "_id": "...", "missionId": "...", "shipId": "...", "status": "active", "createdAt": "..." }
+{ "_id": "...", "missionId": "...", "shipId": "...", "status": "active", "createdAt": "...", "notification": "sent" }
 ```
 
 Reglerne:
@@ -146,6 +146,45 @@ Et kontrolforsøg, hvor de unikke indeks midlertidigt blev fjernet, viste, at de
 
 **Begrænsning:** En lokal standalone MongoDB har ikke transaktioner (det kræver et replica set). Derfor bruges tilbagerulning, hvis statusopdateringerne fejler efter indsættelsen. Med et replica set kunne tildeling og statusopdateringer samles i én transaktion.
 
+## Informationssystemet
+
+Et **separat** Node.js/Express-program i `information-system/server.js`, der kører i sin egen proces på port 4000 og modtager besked om gennemførte tildelinger.
+
+```bash
+npm run info-system        # i en separat terminal
+```
+
+| Endpoint | Funktion |
+|---|---|
+| `POST http://localhost:4000/api/notifications` | Modtager `{ "event": "MISSION_ASSIGNED", "missionId", "shipId" }` og skriver den i konsollen |
+| `GET http://localhost:4000/api/notifications` | Viser modtagne notifikationer (til demonstration) |
+
+Flowet ved tildeling:
+
+```
+Postman → route → controller → missionService ─┬→ repositories → MongoDB
+                                                └→ notificationClient → informationssystem (port 4000)
+```
+
+1. Tildelingen gemmes i MongoDB (databasegarantien, se ovenfor).
+2. **Derefter** sender `src/clients/notificationClient.js` besked til informationssystemet.
+3. Svaret indeholder `"notification": "sent"` eller `"failed"`. **Tildelingen beholdes altid** – en fejl i et andet system må ikke få en gyldig lokal tildeling til at bortfalde. Fejlen logges som `warn`.
+
+| Situation | Svar | Tildeling |
+|---|---|---|
+| Informationssystemet kører | `201`, `"notification": "sent"` | Gemt |
+| Informationssystemet er stoppet | `201`, `"notification": "failed"` (straks) | Gemt |
+| Informationssystemet svarer aldrig | `201`, `"notification": "failed"` (efter 3 sek. timeout) | Gemt |
+| Informationssystemet svarer med fejl (fx 500) | `201`, `"notification": "failed"` | Gemt |
+
+**Hvorfor ikke i controlleren?** Controlleren skal kun oversætte HTTP. Hvordan man taler med et andet system (URL, format, timeout, fejl) er samlet i *én* klient, så det kan ændres ét sted – samme rolle som et repository har over for MongoDB.
+
+**Hvad sker der, hvis `fetch()` aldrig får svar?** Uden timeout ville requesten vente for evigt, og operatøren ville aldrig få svar. Derfor afbrydes kaldet med `AbortSignal.timeout()` efter `NOTIFICATION_TIMEOUT_MS` (standard 3000 ms).
+
+**Hvordan undgås inkonsistente data?** Notifikationen sendes først, *efter* tildelingen er gemt, og dens fejl fanges i servicen. Der er derfor ingen situation, hvor en integrationsfejl efterlader en halv tildeling. Ulempen er, at en mislykket notifikation ikke sendes igen automatisk (gemte notifikationer med genforsøg er en mulig udvidelse).
+
+Demo af timeout: sæt `INFO_DELAY_MS=5000` i `.env` og start informationssystemet igen.
+
 ## Tests
 
 ### Automatiserede tests
@@ -166,11 +205,13 @@ Kører `node:test` mod en **separat testdatabase** (`MONGODB_URI_TEST`, standard
 | Gentaget 10 gange fra ny starttilstand | Hver gang præcis én vinder |
 | To aktive tildelinger indsat direkte i MongoDB (uden om service-laget) | Den ene afvises med `11000` af `unique_active_ship` |
 
+`tests/notification.test.js` starter et **falsk informationssystem** i testen og kontrollerer, at tildelingen gemmes, uanset om informationssystemet kører, er nede, aldrig svarer (timeout) eller svarer med fejl – og at afviste tildelinger ikke sender notifikationer.
+
 `Promise.all` garanterer ikke, at databasen modtager requests på præcis samme tidspunkt – derfor gentages testen, sendes 20 på én gang, og den sidste test viser, at garantien ligger i databasen og ikke afhænger af timing.
 
 ### Postman
 
-Collectionen **"Space Rescue Collection"** har mapperne *Ships*, *Missions*, *Assignments* og *Concurrency*. Mappen *Concurrency* sender to tildelinger af samme skib parallelt med `pm.sendRequest` og kontrollerer derefter den gemte tilstand.
+Collectionen **"Space Rescue Collection"** har mapperne *Ships*, *Missions*, *Assignments*, *Concurrency* og *Information System* (kræver, at informationssystemet kører). Mappen *Concurrency* sender to tildelinger af samme skib parallelt med `pm.sendRequest` og kontrollerer derefter den gemte tilstand.
 
 ### Validering
 
@@ -214,6 +255,9 @@ Konfiguration ligger i `.env` (som aldrig committes). Se `.env.example`:
 | `MONGODB_URI` | `mongodb://localhost:27017/spacerescue` | Forbindelse til MongoDB |
 | `MONGODB_URI_TEST` | `mongodb://localhost:27017/spacerescue_test` | Separat database til `npm test` (navnet skal ende på `_test`) |
 | `INFORMATION_SYSTEM_URL` | `http://localhost:4000` | Det eksterne informationssystem |
+| `NOTIFICATION_TIMEOUT_MS` | `3000` | Hvor længe SpaceRescue venter på informationssystemet |
+| `INFO_PORT` | `4000` | Port for informationssystemet |
+| `INFO_DELAY_MS` | `0` | Kun til demo: forsinker informationssystemets svar |
 
 `.env` indlæses med Node's indbyggede `--env-file-if-exists`, så der er ingen afhængighed af `dotenv`.
 
